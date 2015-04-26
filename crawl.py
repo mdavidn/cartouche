@@ -3,10 +3,16 @@ from multiprocessing.dummy import Pool
 import requests
 import re
 
+API_URL = "http://kol.coldfront.net/thekolwiki/api.php"
+
 # Match words in English text. Attempt to preserve punctuation in abbreviations
 # and concatenations, such as "Ph.D." and "don't" respectively.
 WORDS = re.compile(r"\w+(?:\.\w+\.?)*(?:'\w+)*")
-api_url = "http://kol.coldfront.net/thekolwiki/api.php"
+
+# Inject a newline character after the following HTML elements to simulate
+# how a browser would render something like "<p>a<br>b</p>c".
+BLOCK_TAGS = "address article aside blockquote br dd div dl dt " \
+        "h1 h2 h3 h4 h5 h6 hr li nav ol p pre table td th tr ul".split()
 
 
 def itermwpages():
@@ -16,7 +22,7 @@ def itermwpages():
              "list": "allpages",
              "aplimit": 100}
     while True:
-        resp = requests.get(api_url, params=query)
+        resp = requests.get(API_URL, params=query)
         root = etree.fromstring(resp.content)
         for p in root.iterfind("query/allpages/p"):
             yield p.get("title")
@@ -33,7 +39,7 @@ def mwpage(title):
              "action": "parse",
              "prop": "text",
              "page": title}
-    resp = requests.get(api_url, params=query)
+    resp = requests.get(API_URL, params=query)
     root = etree.fromstring(resp.content)
     el = root.find("parse/text")
     return "" if el is None else el.text
@@ -41,7 +47,11 @@ def mwpage(title):
 
 def htmltext(markup):
     """Return all text in HTML."""
-    return html.document_fromstring(markup).text_content()
+    doc = html.document_fromstring(markup)
+    for e in doc.iter():
+        if e.tag in BLOCK_TAGS:
+            e.tail = "\n" + e.tail if e.tail else "\n"
+    return doc.text_content()
 
 
 def iterwords(text):
